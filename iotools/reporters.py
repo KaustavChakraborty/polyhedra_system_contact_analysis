@@ -1,13 +1,39 @@
-# io/reporters.py
+# iotools/reporters.py
 # ==============================================================================
-# Module: io.reporters
+# Module: iotools.reporters
 # Purpose: Generate analysis reports and summaries
+#
+# This module is the human-readable REPORTING layer of the project.
+#
+# It does not compute contact geometry. It does not read trajectory files. It does
+# not calculate overlap areas or distance metrics. Instead, it takes already-
+# computed dictionaries and turns them into:
+#
+#   1. formatted text reports
+#   2. compact summary dictionaries
+#
+# Typical control flow:
+#
+#     analysis code computes results
+#         |
+#         v
+#     SummaryGenerator.generate_summary(...)
+#         |
+#         v
+#     ReportGenerator.generate_report(...)
+#         |
+#         v
+#     FileWriter / ReportGenerator.save_report writes output
+#
+# In short:
+#     analysis modules produce numbers;
+#     reporters.py explains those numbers in a readable structure.
 #
 # Classes:
 #   - ReportGenerator: Generate analysis reports
 #   - SummaryGenerator: Create summary statistics
 #
-# Author: Contact Analysis Team
+# Author: Kaustav Chakraborty
 # ==============================================================================
 
 from __future__ import annotations
@@ -17,7 +43,17 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 
-from .. import ValidationError
+import sys
+from pathlib import Path
+
+# ------------------------------------------------------------------------------
+# Local project import setup
+# ------------------------------------------------------------------------------
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from core import ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -29,43 +65,67 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ReportGenerator:
     """
-    Generate analysis reports.
-    
-    Creates formatted reports from analysis results.
-    
-    Examples
-    --------
-    >>> gen = ReportGenerator()
-    >>> report = gen.generate_report(results)
+    Convert a result dictionary into a formatted text report.
+
+    Example input
+    -------------
+    results = {
+        "rdf": {"frames": 100, "bins": 50},
+        "statistics": {"mean_distance": 0.42},
+        "metrics": ["face_center_face_center", "vertex_vertex"],
+    }
+
+    Example output
+    --------------
+    A multi-line string with section headers and key/value pairs.
     """
     
     title: str = "Contact Analysis Report"
-    author: str = "Contact Analysis Team"
+    author: str = "Kaustav Chakraborty"
     
-    def generate_report(
-        self,
-        results: Dict[str, Any],
-        include_metadata: bool = True
-    ) -> str:
+    def generate_report(self, results: Dict[str, Any], include_metadata: bool = True) -> str:
         """
-        Generate formatted report.
-        
+        Generate a formatted report string.
+
         Parameters
         ----------
-        results : Dict[str, Any]
-            Analysis results
-        include_metadata : bool, optional
-            Include timestamp and author (default: True)
-        
+        results
+            Dictionary containing analysis outputs. Each top-level key becomes a
+            report section.
+
+        include_metadata
+            If True, include author and timestamp at the beginning.
+
         Returns
         -------
         str
-            Formatted report text
+            Complete report as one multi-line string.
+
+        Control flow
+        ------------
+        1. Validate that results is a dictionary.
+        2. Create report header.
+        3. Add metadata if requested.
+        4. Loop over each result section.
+        5. Format nested dictionaries/lists/scalars.
+        6. Return the joined text.
         """
         
         logger.debug("[ReportGenerator] Generating report")
         
-        lines = []
+        if results is None:
+            raise ValidationError(
+                "ReportGenerator received results=None.",
+                error_code="REPORT_RESULTS_NONE",
+            )
+
+        if not isinstance(results, dict):
+            raise ValidationError(
+                "ReportGenerator expects results to be a dictionary.",
+                error_code="REPORT_RESULTS_INVALID_TYPE",
+            )
+
+        lines: List[str] = []
         
         # Header
         lines.append("=" * 80)
@@ -79,55 +139,75 @@ class ReportGenerator:
             lines.append(f"Generated: {datetime.now().isoformat()}")
             lines.append("")
         
-        # Content
+        # Main content block
         for section, content in results.items():
-            lines.append(f"\n{section.upper()}")
-            lines.append("-" * len(section))
-            
-            if isinstance(content, dict):
-                for key, value in content.items():
-                    lines.append(f"  {key}: {value}")
-            elif isinstance(content, list):
-                for item in content:
-                    lines.append(f"  - {item}")
-            else:
-                lines.append(f"  {content}")
-        
-        # Footer
+            section_name = str(section)
+            lines.append("")
+            lines.append(section_name.upper())
+            lines.append("-" * len(section_name))
+            self._append_formatted_content(lines, content, indent=2)
+
+        # Footer block
         lines.append("")
         lines.append("=" * 80)
-        
+
         report = "\n".join(lines)
-        
         logger.info("[ReportGenerator] Report generated")
-        
         return report
     
-    def save_report(self, report: str, filepath: str) -> None:
+
+    def _append_formatted_content(self, lines: List[str], content: Any, indent: int = 2) -> None:
         """
-        Save report to file.
-        
-        Parameters
-        ----------
-        report : str
-            Report text
-        filepath : str
-            Output file path
+        Append formatted content into an existing report line list.
+
+        This helper recursively handles nested dictionaries. It keeps the main
+        generate_report() method easier to read.
         """
-        
-        logger.debug(f"[ReportGenerator] Saving report to {filepath}")
-        
+        prefix = " " * indent
+
+        if isinstance(content, dict):
+            for key, value in content.items():
+                if isinstance(value, dict):
+                    lines.append(f"{prefix}{key}:")
+                    self._append_formatted_content(lines, value, indent=indent + 2)
+                elif isinstance(value, list):
+                    lines.append(f"{prefix}{key}:")
+                    for item in value:
+                        lines.append(f"{prefix}  - {item}")
+                else:
+                    lines.append(f"{prefix}{key}: {value}")
+
+        elif isinstance(content, list):
+            for item in content:
+                lines.append(f"{prefix}- {item}")
+
+        else:
+            lines.append(f"{prefix}{content}")
+
+
+
+    def save_report(self, report: str, filepath: str | Path) -> None:
+        """
+        Save report text to disk.
+
+        This method is convenient if you already have a report string and want
+        to write it directly without going through FileWriter.
+        """
+        path = Path(filepath)
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        logger.debug("[ReportGenerator] Saving report to %s", path)
+
         try:
-            with open(filepath, 'w') as f:
-                f.write(report)
-            
-            logger.info(f"[ReportGenerator] Report saved to {filepath}")
-        
-        except Exception as e:
+            with path.open("w", encoding="utf-8") as handle:
+                handle.write(report)
+            logger.info("[ReportGenerator] Report saved to %s", path)
+
+        except Exception as exc:
             raise ValidationError(
-                f"Failed to save report: {e}",
-                error_code="REPORT_SAVE_ERROR"
-            ) from e
+                f"Failed to save report: {exc}",
+                error_code="REPORT_SAVE_ERROR",
+            ) from exc
 
 
 # ==============================================================================
@@ -147,8 +227,7 @@ class SummaryGenerator:
     >>> summary = gen.generate_summary(rdf, stats)
     """
     
-    def generate_summary(
-        self,
+    def generate_summary(self,
         rdf_data: Optional[Dict[str, Any]] = None,
         stats_data: Optional[Dict[str, Any]] = None,
         metrics_data: Optional[Dict[str, Any]] = None
@@ -203,13 +282,22 @@ class SummaryGenerator:
     def _summarize_rdf(self, rdf_data: Dict[str, Any]) -> Dict[str, Any]:
         """Summarize RDF data."""
         return {
-            'frames': rdf_data.get('frame_count', 0),
-            'bins': rdf_data.get('n_bins', 0),
-            'r_range': f"[{rdf_data.get('r_min', 0):.3f}, {rdf_data.get('r_max', 0):.3f}]",
+            "frames": rdf_data.get("frame_count", 0),
+            "bins": rdf_data.get("n_bins", 0),
+            "r_range": f"[{float(rdf_data.get('r_min', 0)):.3f}, {float(rdf_data.get('r_max', 0)):.3f}]",
         }
     
     def _summarize_stats(self, stats_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Summarize statistics."""
+        """
+        Summarize dictionary-valued statistics entries.
+
+        Expected structure:
+
+            {
+                "distance": {"mean": 0.2, "std": 0.05, "n_samples": 1000},
+                "area": {"mean": 1.1, "std": 0.10, "n_samples": 1000},
+            }
+        """        
         summary = {}
         
         for metric_name, result in stats_data.items():
@@ -257,13 +345,16 @@ class SummaryGenerator:
                 lines.append(f"  {key}: {value}")
             lines.append("")
         
-        if 'statistics' in summary:
+        if "statistics" in summary:
             lines.append("Statistics")
             lines.append("-" * 40)
-            for metric, values in summary['statistics'].items():
+            for metric, values in summary["statistics"].items():
                 lines.append(f"  {metric}:")
-                for key, value in values.items():
-                    lines.append(f"    {key}: {value}")
+                if isinstance(values, dict):
+                    for key, value in values.items():
+                        lines.append(f"    {key}: {value}")
+                else:
+                    lines.append(f"    {values}")
             lines.append("")
         
         if 'metrics' in summary:
@@ -295,10 +386,10 @@ if __name__ == "__main__":
         }
         
         report = gen.generate_report(test_results)
-        print("✓ Report generated:")
+        print("[SUCCESS] Report generated:")
         print(report[:200] + "...\n")
     except Exception as e:
-        print(f"✗ Error: {e}\n")
+        print(f"[FAILED] Error: {e}\n")
     
     print("[TEST 2] SummaryGenerator...")
     try:
@@ -308,11 +399,11 @@ if __name__ == "__main__":
         summary = gen.generate_summary(rdf_data=test_rdf)
         
         formatted = gen.format_summary(summary)
-        print("✓ Summary generated:")
+        print("[SUCCESS] Summary generated:")
         print(formatted[:200] + "...\n")
     except Exception as e:
-        print(f"✗ Error: {e}\n")
+        print(f"[FAILED] Error: {e}\n")
     
     print("="*80)
-    print("✓ Reporter tests passed!")
+    print("[SUCCESS] Reporter tests passed!")
     print("="*80 + "\n")

@@ -9,7 +9,7 @@
 #   - FileWriter, CSVWriter, JSONWriter, NPYWriter, TXTWriter (writers)
 #   - ReportGenerator, SummaryGenerator (reporters)
 #
-# Author: Contact Analysis Team
+# Author: Kaustav Chakraborty
 # ==============================================================================
 
 from .config import ConfigLoader
@@ -40,5 +40,5 @@ __all__ = [
     'SummaryGenerator',
 ]
 
-__version__ = '1.0.0'
-__author__ = 'Contact Analysis Team'
+__version__ = '2.0.0'
+__author__ = 'Kaustav Chakraborty'
