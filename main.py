@@ -14,6 +14,29 @@ At this stage, main.py only:
 
 It does not yet import or execute the scientific contact-analysis workflow.
 
+Import Structure
+----------------
+The modular design separates concerns:
+    - config: Configuration loading, validation, and parameter building
+    - parallel: MPI utilities and rank-aware printing
+    - workflow: High-level scientific workflows and shape geometry handling
+
+Arguments
+---------
+positional_arguments : optional
+    Path to the parameter JSON configuration file.
+    If not provided, defaults to "param_file.json" in the current directory.
+
+--validate-only : optional flag
+    If provided, the script validates configuration and shape geometry,
+    then exits without running the full contact-analysis workflow.
+    Useful for testing configuration validity before long runs.
+
+Exit Codes
+----------
+    0 : Successful execution or validation.
+    2 : Configuration error or invalid command-line arguments.
+
 Usage
 -----
 Serial:
