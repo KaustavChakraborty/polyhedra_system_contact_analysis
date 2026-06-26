@@ -1,13 +1,74 @@
 """
 Canonical runtime registry for selectable distance metrics.
 
-Important
----------
-The dictionary order below exactly preserves the insertion order of
-ContactDistanceMetrics.METRIC_REGISTRY in the reference all_distances.py.
+METRIC REGISTRY OVERVIEW
+========================
+This module maintains the authoritative mapping between public metric names
+and their private implementation methods in ContactDistanceMetrics class.
 
-The old workflow converts integer indices into metric names using this order.
-Therefore, reordering this dictionary would change scientific behavior.
+The dictionary order is critical: the index position of each metric in
+METRIC_REGISTRY determines how integer-based metric selection works.
+
+IMPORTANCE OF ORDERING
+======================
+The registry order MUST be preserved because:
+
+1. Historical Compatibility
+   The old workflow converts integer indices to metric names using this exact order:
+   
+       index 0 → face_center_face_center
+       index 1 → face_center_to_face_perp
+       index 2 → vertex_vertex
+       ... etc
+   
+   Changing the order would change scientific results.
+
+2. Configuration Files
+   metric_definitions.json stores metric indices:
+   
+       "0": "face_center_face_center",
+       "1": "face_center_to_face_perp",
+       ... etc
+   
+   These indices MUST map to the correct metrics via registry order.
+
+3. MPI Communication
+   Integer indices are more compact for MPI broadcasts than metric names.
+   The registry order ensures all ranks use the same index→name mapping.
+
+REORDERING CONSEQUENCES
+=======================
+DO NOT REORDER unless you also:
+
+1. Update param_file.json metric indices
+2. Update metric_definitions.json indices
+3. Recompute all historical analyses with old index mappings
+4. Verify the old workflow still produces identical results
+
+METRIC IMPLEMENTATIONS
+======================
+Each registry entry maps a public name to a private method:
+
+Public name                 => Private method in ContactDistanceMetrics
+─────────────────────────────────────────────────────────────────────
+face_center_face_center     => _face_center_face_center()
+face_center_to_face_perp    => _face_center_to_face_perp()
+vertex_vertex               => _vertex_vertex()
+vertex_edge_mp              => _vertex_edge_mp()
+edge_mp_edge_mp             => _edge_mp_edge_mp()
+vertex_to_edge_perp         => _vertex_to_edge_perp()
+edge_midpoint_to_edge_perp  => _edge_midpoint_to_edge_perp()
+vertex_to_face_perp         => _vertex_to_face_perp()
+edge_midpoint_to_face_perp  => _edge_midpoint_to_face_perp()
+zero                        => _zero()
+
+REGISTRY STRUCTURE
+==================
+The METRIC_REGISTRY dictionary has:
+
+- Keys: public metric names (used in param_file.json)
+- Values: private method names (prefixed with underscore)
+- Order: insertion order (Python 3.7+)
 """
 
 from __future__ import annotations
