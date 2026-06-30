@@ -168,17 +168,40 @@ def find_unit_normal(polygon, name, tol=1.0e-12):
     ValueError
         If the polygon is invalid or all tested triplets are collinear.
     """
+
+    # =========================================================================
+    # STEP 1: VALIDATE POLYGON
+    # =========================================================================
     polygon = as_3d_polygon(polygon, name)
+
+    # =========================================================================
+    # STEP 2: SET TRIPLET ORIGIN
+    # =========================================================================
+    # Use first vertex as common origin for all triplets
     p0 = polygon[0]
 
+    # =========================================================================
+    # STEP 3: SEARCH FOR FIRST VALID TRIPLET
+    # =========================================================================
+    # Double loop over remaining vertices
+    # a and b are indices of second and third vertices
     for a in range(1, len(polygon) - 1):
         for b in range(a + 1, len(polygon)):
+            # Compute vectors from origin to two vertices
             v1 = polygon[a] - p0
             v2 = polygon[b] - p0
+            # Compute cross product (perpendicular vector)
             normal = np.cross(v1, v2)
+            # Compute magnitude (length of cross product)
             norm = np.linalg.norm(normal)
+            # Check if magnitude exceeds threshold
+            # Valid triplet: norm > tolerance
+            # Invalid (collinear): norm <= tolerance
             if norm > tol: return normal / norm
 
+    # =========================================================================
+    # STEP 4: NO VALID TRIPLET FOUND
+    # =========================================================================
     raise ValueError(f"{name}: could not compute normal; vertices are collinear.")
 
 
